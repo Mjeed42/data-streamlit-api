@@ -29,35 +29,21 @@ st.markdown("""
         padding: 10px;
         border-radius: 5px;
     }
-    .marker-control {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        z-index: 1000;
-        background: white;
-        padding: 10px;
-        border-radius: 5px;
-        box-shadow: 0 0 10px rgba(0,0,0,0.2);
-    }
     </style>
     """, unsafe_allow_html=True)
 
 # App title
 st.markdown('<p class="title">NY TAXI FARE PREDICTOR</p>', unsafe_allow_html=True)
 
-# Initialize session state for all variables
+# Initialize session state for locations
 if 'pickup_coords' not in st.session_state:
     st.session_state.pickup_coords = [40.7128, -74.0060]  # Default NYC
 if 'dropoff_coords' not in st.session_state:
     st.session_state.dropoff_coords = [40.7128, -73.9960]  # Slightly east
 if 'active_marker' not in st.session_state:
     st.session_state.active_marker = 'pickup'
-if 'show_prediction' not in st.session_state:
-    st.session_state.show_prediction = False
-if 'prediction_result' not in st.session_state:
-    st.session_state.prediction_result = None
 
-# Create Folium map with custom controls
+# Create Folium map
 def create_map():
     m = folium.Map(
         location=[40.7128, -74.0060],  # NYC
@@ -79,56 +65,32 @@ def create_map():
         icon=folium.Icon(color="blue", icon="flag", prefix="fa")
     ).add_to(m)
 
-    # Add route if prediction exists
-    if st.session_state.show_prediction and st.session_state.prediction_result:
-        folium.PolyLine(
-            locations=[st.session_state.pickup_coords, st.session_state.dropoff_coords],
-            color="green",
-            weight=5,
-            opacity=0.7
-        ).add_to(m)
-
-    # Add custom HTML for marker control
-    marker_control = f"""
-    <div class="marker-control">
-        <button onclick="setActiveMarker('pickup')"
-                style="background-color: {'#FF5733' if st.session_state.active_marker == 'pickup' else '#ccc'};
-                       color: white; border: none; padding: 5px 10px; margin-right: 5px; border-radius: 3px;">
-            Set Pickup
-        </button>
-        <button onclick="setActiveMarker('dropoff')"
-                style="background-color: {'#4287f5' if st.session_state.active_marker == 'dropoff' else '#ccc'};
-                       color: white; border: none; padding: 5px 10px; border-radius: 3px;">
-            Set Dropoff
-        </button>
-    </div>
-    <script>
-    function setActiveMarker(type) {{
-        parent.window.postMessage({{type: 'setActiveMarker', markerType: type}}, '*');
-    }}
-    </script>
-    """
-    m.get_root().html.add_child(folium.Element(marker_control))
-
     return m
 
-# Display the map
-map_data = st_folium(
+# Display the map with click handler
+map_output = st_folium(
     create_map(),
     width=1200,
     height=500,
     returned_objects=["last_clicked"]
 )
 
-# Handle map clicks and marker changes
-if map_data.get("last_clicked"):
-    clicked_coords = [map_data["last_clicked"]["lat"], map_data["last_clicked"]["lng"]]
+# Handle map clicks
+if map_output["last_clicked"]:
+    clicked_coords = [map_output["last_clicked"]["lat"], map_output["last_clicked"]["lng"]]
     if st.session_state.active_marker == 'pickup':
         st.session_state.pickup_coords = clicked_coords
     else:
         st.session_state.dropoff_coords = clicked_coords
-    st.session_state.show_prediction = False  # Reset prediction when locations change
-    st.experimental_rerun()
+
+# Marker selection buttons
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("Set Pickup Location", type="primary"):
+        st.session_state.active_marker = 'pickup'
+with col2:
+    if st.button("Set Dropoff Location"):
+        st.session_state.active_marker = 'dropoff'
 
 # Display coordinates (read-only)
 st.markdown("### Selected Coordinates")
@@ -182,48 +144,19 @@ if st.button("Get Fare Prediction", type="primary"):
     try:
         # Make API request
         response = requests.get(url, params=params)
-        st.session_state.prediction_result = response.json().get('fare', 0)
-        st.session_state.show_prediction = True
-        st.experimental_rerun()
+        prediction = response.json().get('fare', 0)
 
-    except Exception as e:
-        st.error(f"Error getting prediction: {e}")
-        st.session_state.show_prediction = False
+        # Display prediction
+        st.success(f"### Predicted Fare: ${prediction:.2f}")
+
+
+
+
+
+
+    except :
+        st.error(f"Error getting prediction: ")
         st.markdown('''
             **Note:** If you want to use your own API instead of Le Wagon's,
             replace the URL variable with your API endpoint.
             ''')
-
-# Display prediction if available
-if st.session_state.show_prediction and st.session_state.prediction_result is not None:
-    st.success(f"### Predicted Fare: ${st.session_state.prediction_result:.2f}")
-
-    # Show map with route
-    m = folium.Map(
-        location=[40.7128, -74.0060],
-        zoom_start=12,
-        control_scale=True
-    )
-
-    # Add markers
-    folium.Marker(
-        st.session_state.pickup_coords,
-        popup="Pickup Location",
-        icon=folium.Icon(color="red", icon="car", prefix="fa")
-    ).add_to(m)
-
-    folium.Marker(
-        st.session_state.dropoff_coords,
-        popup="Dropoff Location",
-        icon=folium.Icon(color="blue", icon="flag", prefix="fa")
-    ).add_to(m)
-
-    # Add route line
-    folium.PolyLine(
-        locations=[st.session_state.pickup_coords, st.session_state.dropoff_coords],
-        color="green",
-        weight=5,
-        opacity=0.7
-    ).add_to(m)
-
-    st_folium(m, width=1200, height=500)
